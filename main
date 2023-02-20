@@ -1,0 +1,86 @@
+#!/usr/bin/env python
+# import rospy
+from geometry_msgs.msg import Twist
+from sensor_msgs.msg import LaserScan
+from nav_msgs.msg import Odometry
+from utility.manageResponse import responseToScan, responseToOdom
+from utility.util import identifyVelocities, send
+from algorithms.magnetic import runMitad
+
+prev = 0
+origin = (0, 0)
+
+# These manage the robots positioning
+robotYaw = 0
+initialPosition = None
+currentPosition = None
+blockSize = .1
+areaSize = 2
+barriers = {}
+mode = 'turn'
+
+stepDetails = {'steps': [], 'visited': {},
+               'index': 1, 'mode': 'route', 'end': None}
+
+
+def odomHandler(msg):
+    global currentPosition
+    global initialPosition
+    global robotYaw
+
+    (currentPosition, initialPosition, robotYaw) = responseToOdom(
+        msg, currentPosition, initialPosition, blockSize)
+
+
+def scanHandler(msg):
+    rerouteIndex = responseToScan(msg, stepDetails, currentPosition,
+                                  barriers, robotYaw, blockSize, areaSize)
+
+    if stepDetails['mode'] != 'route' and rerouteIndex > -1 and rerouteIndex >= stepDetails['index']:
+        rospy.loginfo(
+            f"Blocker found in path {stepDetails['steps'][rerouteIndex]}")
+        stepDetails['mode'] = 'route'
+
+
+def main():
+
+    global stepDetails
+    global currentPosition
+    global robotYaw
+    global steps
+
+    # pub = rospy.Publisher('mitad', String, queue_size=10)
+    velocityPublisher = rospy.Publisher('cmd_vel', Twist, queue_size=10)
+    rospy.init_node('mitad', anonymous=True)
+    rospy.Subscriber('/odom', Odometry, odomHandler)
+    rospy.Subscriber('/scan', LaserScan, scanHandler)
+    frequency = 5
+    rate = rospy.Rate(frequency)
+
+    while not rospy.is_shutdown():
+        if stepDetails['end'] == None:
+            send(stepDetails, currentPosition, barriers)
+            rate.sleep()
+            continue
+        # rospy.loginfo(stepDetails['mode'])
+        data = identifyVelocities(
+            frequency, stepDetails, currentPosition, robotYaw)
+        twist = Twist()
+        twist.angular.z = data['z']
+        twist.linear.x = data['x']
+        velocityPublisher.publish(twist)
+        if stepDetails['mode'] == 'route':
+            runMitad(stepDetails, currentPosition,
+                     barriers, areaSize, blockSize)
+            if len(stepDetails['steps']):
+                rospy.loginfo(f'path found is {stepDetails["steps"]}')
+                stepDetails['mode'] = 'turn'
+        send(stepDetails, currentPosition, barriers)
+        rate.sleep()
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except rospy.ROSInterruptException:
+        pass
