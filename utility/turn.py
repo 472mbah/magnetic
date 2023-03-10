@@ -46,12 +46,19 @@ def translateTargetVector(targetVector):
     else:
         return (2*math.pi) - treatAngle
 
+def findVectorDifference (vectorA, vectorB):
+    return (vectorA[0]-vectorB[0], vectorA[1]-vectorB[1])
+
+def convertVectorToAngle (vector):
+    if vector[1] == 0:
+        return 0
+    rads = math.acos(vector[0]/vector[1])
+    return rads * (180/math.pi)
 
 """
 Current angle follows model where anything beyound pi 
 radius becomes the negative of its reflected value
 """
-
 
 def findAngle(currentAngle, targetVector):
     turtlebotAngle = translateCurrentAngle(currentAngle)

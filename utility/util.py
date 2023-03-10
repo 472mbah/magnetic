@@ -7,7 +7,8 @@ import math
 # import rospy
 import json
 
-url = "https://turtlebotrender.momodoubah1.repl.co/"
+# url = "https://turtlebotrender.momodoubah1.repl.co/"
+url = "http://localhost:9000/"
 
 def fuseObjects (obj1, obj2):
     new = {}
@@ -46,6 +47,13 @@ def getAreaMeta (blockers, areaSize):
 
     return areaMeta
 
+def convertIntoKeysRaw(item):
+    fresh = {}
+    for child in item:
+        idChild_ = f'{child[0]}:{child[1]}'
+        fresh[idChild_] = None
+
+    return fresh
 
 def convertIntoKeys(item):
     fresh = {}
@@ -91,18 +99,34 @@ def send(stepDetails, currentPosition, barriers):
     except:
         pass
 
+def sendRaw(stepDetails, currentPosition, barriers, convertBarriers=False):
 
-def inBucket(item, bucket, areaSize, blockSize, justCheckParent=False):
+    data = {'facingAngle': currentPosition[2], 'targetAngle': getTargetDirection(stepDetails), 'blockers': convertIntoKeysRaw(barriers) if convertBarriers else barriers,
+                    'visits': stepDetails['visited'], 'path': stepDetails['steps'], 'robotPosition': currentPosition[3]}
+    requests.post(url, json= data)
+        # manageNewTarget(json.loads(response.text), stepDetails)
+
+
+def inBucket(item, bucket, areaSize, blockSize, justCheckParent=False, returnParentID=False):
 
     parentId = reverseApproximateCords(item, blockSize)
     parentId = approximateCords(parentId, areaSize)
+    """
+        Only return tuple if item not in list but you want to know the parentID
+        Used for mg6 on emptyArea variable
+    """
     if not (parentId in bucket):
+        if returnParentID:
+            return ( False, parentId ) 
         return False
     """
         This is just for checking that the parent is in the bucket
     """
     if justCheckParent:
+        if returnParentID:
+            return parentId
         return True
+
     return item in bucket[parentId]
 
 
@@ -126,33 +150,12 @@ def commentBarriers(barriers):
         rospy.loginfo('empty')
 
 
-def isInArea(target, currentPosition, buffer=.3):
+def isInArea(target, currentPosition):
 
     if currentPosition == None or len(currentPosition) != 4:
         return False
 
     return target[0] == currentPosition[3][0] and target[1] == currentPosition[3][1]
-
-
-"""
-def isInArea(target, currentPosition, buffer=.3):
-
-    if currentPosition == None:
-        return False
-
-    xMin = target[0] - buffer
-    xMax = target[0] + buffer
-    if xMin > xMax:
-        xMax *= -1
-        xMin *= -1
-    yMin = target[1] - buffer
-    yMax = target[1] + buffer
-    if yMin > yMax:
-        yMax *= -1
-        yMin *= -1
-
-    return currentPosition[0] >= xMin and currentPosition[0] <= xMax and currentPosition[1] >= yMin and currentPosition[1] <= yMax
-"""
 
 
 def getEuler(quaternion):
@@ -187,6 +190,9 @@ def approximateCords(cords, blockSize):
         return (0, 0)
     return (mitadFloor(cords[0]/blockSize), mitadFloor(cords[1]/blockSize))
 
+def getParentCords (cords, areaSize, blockSize):
+    originalCords = reverseApproximateCords(cords, blockSize)
+    return approximateCords(originalCords, areaSize)
 
 def identifyVelocities(frequency, stepDetails, currentPosition, robotYaw):
 
